@@ -9,6 +9,7 @@ import userRouter from './routes/user.routes.js';
 import documentRouter from './routes/document.routes.js';
 import signatureRouter from './routes/signature.routes.js';
 import auditRouter from './routes/audit.routes.js';
+import { Console } from 'console';
 
 // Load environment variables
 dotenv.config();
@@ -18,6 +19,8 @@ const PORT = process.env.PORT;
 
 // CORS configuration
 const allowedOrigins = process.env.CLIENT_URLS.split(',');
+
+console.log('Allowed origins:', allowedOrigins);
 
 app.use(cors({
     origin: allowedOrigins,
