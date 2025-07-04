@@ -16,7 +16,6 @@ const SignatureList = ({ documentId }) => {
         const response = await axiosInstance.get(`/signatures/${documentId}`);
         if (response.data.success) {
           const signatureData = response.data.data.signatures || [];
-          console.log('Signature data received:', signatureData);
           setSignatures(signatureData);
         }
       } catch (err) {

@@ -8,9 +8,12 @@ import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import SignatureUpload from "./SignatureUpload";
-import SignaturePreview from "./SignaturePreview";
 
-const PDFViewer = ({ document, onSignatureAdded, refreshTrigger }) => {
+const PDFViewer = ({
+  document: pdfDocument,
+  onSignatureAdded,
+  refreshTrigger,
+}) => {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -18,6 +21,8 @@ const PDFViewer = ({ document, onSignatureAdded, refreshTrigger }) => {
   const [placement, setPlacement] = useState(null); // { page, x, y }
   const [placing, setPlacing] = useState(false);
   const [pageLayer, setPageLayer] = useState(null); // DOM node for the page layer
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ ready: false });
   const defaultLayout = defaultLayoutPlugin();
 
   useEffect(() => {
@@ -27,7 +32,7 @@ const PDFViewer = ({ document, onSignatureAdded, refreshTrigger }) => {
         setLoading(true);
         setError(null);
         const res = await axiosInstance.get(
-          `/docs/${document._id}/download?t=${Date.now()}`,
+          `/docs/${pdfDocument._id}/download?t=${Date.now()}`,
           {
             responseType: "blob",
           }
@@ -40,37 +45,22 @@ const PDFViewer = ({ document, onSignatureAdded, refreshTrigger }) => {
         setLoading(false);
       }
     };
-    if (document?._id) fetchPDF();
+    if (pdfDocument?._id) fetchPDF();
     return () => {
       if (url) URL.revokeObjectURL(url);
       setPdfUrl(null);
     };
-  }, [document?._id, refreshTrigger]);
-
-  // Helper to get page number from a page layer element
-  const getPageNumberFromLayer = (el) => {
-    if (!el) return 1;
-    const attr = el.getAttribute("data-page-number");
-    if (attr) return parseInt(attr, 10);
-    // fallback: try to find parent with data-page-number
-    let parent = el.parentElement;
-    while (parent) {
-      const pn = parent.getAttribute("data-page-number");
-      if (pn) return parseInt(pn, 10);
-      parent = parent.parentElement;
-    }
-    return 1;
-  };
+  }, [pdfDocument?._id, refreshTrigger]);
 
   // Handle click on PDF area for signature placement
   const handlePdfClick = (e) => {
-    if (!signatureFile) return;
+    if (!signatureFile || typeof window === "undefined") return;
 
     // Find the PDF page layer under the mouse
     let pageEl = e.target.closest(".rpv-core__page-layer");
     if (!pageEl) {
       // fallback: find any page layer at mouse position
-      const layers = document.querySelectorAll(".rpv-core__page-layer");
+      const layers = window.document.querySelectorAll(".rpv-core__page-layer");
       for (let layer of layers) {
         const rect = layer.getBoundingClientRect();
         if (
@@ -95,11 +85,83 @@ const PDFViewer = ({ document, onSignatureAdded, refreshTrigger }) => {
     const rect = pageEl.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const page = getPageNumberFromLayer(pageEl);
+    // Always place signature on page 1
+    const page = 1;
 
-    setPlacement({ page, x, y, width: 150, height: 50 });
+    setPlacement({ page, x, y, width: 150, height: 150 });
     setPlacing(true);
   };
+
+  // Handle dragging start
+  const handleDragStart = (e) => {
+    if (!placement || !pageLayer) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const pageRect = pageLayer.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const offsetX = clientX - pageRect.left - placement.x;
+    const offsetY = clientY - pageRect.top - placement.y;
+
+    setIsDragging(true);
+    setDragStart({ ready: true, offsetX, offsetY });
+  };
+
+  // Handle mouse/touch move for dragging
+  const handleMouseMove = (e) => {
+    if (!isDragging || !placement || !dragStart.ready || !pageLayer) return;
+    e.preventDefault();
+
+    const pageRect = pageLayer.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const mouseX = clientX - pageRect.left;
+    const mouseY = clientY - pageRect.top;
+
+    const newX = Math.max(
+      0,
+      Math.min(mouseX - dragStart.offsetX, pageRect.width - placement.width)
+    );
+    const newY = Math.max(
+      0,
+      Math.min(mouseY - dragStart.offsetY, pageRect.height - placement.height)
+    );
+
+    setPlacement((prev) => ({
+      ...prev,
+      x: newX,
+      y: newY,
+    }));
+  };
+
+  // Handle mouse/touch up
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Add event listeners for mouse/touch move and up
+  useEffect(() => {
+    if (isDragging && typeof window !== "undefined") {
+      // Mouse events
+      window.document.addEventListener("mousemove", handleMouseMove);
+      window.document.addEventListener("mouseup", handleMouseUp);
+      // Touch events
+      window.document.addEventListener("touchmove", handleMouseMove, {
+        passive: false,
+      });
+      window.document.addEventListener("touchend", handleMouseUp);
+
+      return () => {
+        window.document.removeEventListener("mousemove", handleMouseMove);
+        window.document.removeEventListener("mouseup", handleMouseUp);
+        window.document.removeEventListener("touchmove", handleMouseMove);
+        window.document.removeEventListener("touchend", handleMouseUp);
+      };
+    }
+  }, [isDragging, dragStart, placement, pageLayer]);
 
   // Send placement to backend
   const handlePlaceSignature = async () => {
@@ -111,7 +173,7 @@ const PDFViewer = ({ document, onSignatureAdded, refreshTrigger }) => {
 
     // For now, let's send the coordinates as percentages and let backend calculate
     const formData = new FormData();
-    formData.append("documentId", document._id);
+    formData.append("documentId", pdfDocument._id);
     formData.append("pageNumber", String(placement.page));
 
     // Send coordinates as a percentage of the page layer dimensions
@@ -152,7 +214,7 @@ const PDFViewer = ({ document, onSignatureAdded, refreshTrigger }) => {
       } else {
         // Reload PDF with cache busting if onSignatureAdded is not provided
         const res = await axiosInstance.get(
-          `/docs/${document._id}/download?t=${Date.now()}`,
+          `/docs/${pdfDocument._id}/download?t=${Date.now()}`,
           {
             responseType: "blob",
           }
@@ -211,16 +273,13 @@ const PDFViewer = ({ document, onSignatureAdded, refreshTrigger }) => {
       <CardHeader className="pb-2 md:pb-4">
         <CardTitle className="flex items-center justify-between">
           <span className="text-base md:text-lg truncate pr-2">
-            {document.title}
+            {pdfDocument.title}
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-2 md:p-6">
         <div className="space-y-2 md:space-y-4">
           <SignatureUpload onSignatureReady={setSignatureFile} />
-          {signatureFile && !placing && (
-            <SignaturePreview file={signatureFile} />
-          )}
           <div className="flex items-center">
             <div className="pdf-viewer-height w-full relative border shadow-lg overflow-hidden rounded">
               <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
@@ -239,19 +298,82 @@ const PDFViewer = ({ document, onSignatureAdded, refreshTrigger }) => {
                     signatureFile &&
                     pageLayer &&
                     createPortal(
-                      <img
-                        src={URL.createObjectURL(signatureFile)}
-                        alt="Signature Preview"
+                      <div
                         style={{
                           position: "absolute",
                           left: placement.x,
                           top: placement.y,
                           width: placement.width,
                           height: placement.height,
-                          pointerEvents: "none",
+                          border: "2px dashed #3b82f6",
                           zIndex: 10,
+                          touchAction: "none", // Prevent default touch behaviors
                         }}
-                      />,
+                      >
+                        <img
+                          src={URL.createObjectURL(signatureFile)}
+                          alt="Signature Preview"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            pointerEvents: "none",
+                          }}
+                        />
+                        {/* Drag handle - only draggable area */}
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: -5,
+                            top: -5,
+                            width: 20,
+                            height: 20,
+                            backgroundColor: "#3b82f6",
+                            cursor: isDragging ? "grabbing" : "grab",
+                            border: "2px solid white",
+                            borderRadius: "3px",
+                            touchAction: "none",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                          onMouseDown={handleDragStart}
+                          onTouchStart={handleDragStart}
+                        >
+                          {/* Drag icon */}
+                          <div
+                            style={{
+                              width: "8px",
+                              height: "8px",
+                              background: "white",
+                              borderRadius: "1px",
+                              position: "relative",
+                            }}
+                          >
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: "2px",
+                                left: "0",
+                                width: "8px",
+                                height: "1px",
+                                backgroundColor: "#3b82f6",
+                              }}
+                            />
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: "4px",
+                                left: "0",
+                                width: "8px",
+                                height: "1px",
+                                backgroundColor: "#3b82f6",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>,
                       pageLayer
                     )}
                 </div>

@@ -8,15 +8,12 @@ const ProtectedRoute = ({ children }) => {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    console.log('ProtectedRoute: Checking authentication...');
     axiosInstance.get('/auth/profile')
       .then(res => {
-        console.log('ProtectedRoute: Authentication successful', res.data);
         setUser(res.data.data.user);
         setIsAuthenticated(true);
       })
       .catch(error => {
-        console.log('ProtectedRoute: Authentication failed', error.response?.status, error.response?.data);
         setIsAuthenticated(false);
       })
       .finally(() => setLoading(false));

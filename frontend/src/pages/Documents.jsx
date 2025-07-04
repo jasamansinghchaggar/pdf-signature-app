@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { ThemeToggle } from '@/components/theme-toggle';
 import FileUpload from '../components/FileUpload';
 import PDFViewer from '../components/PDFViewer';
-import SignatureList from '../components/SignatureList'; // Import the new component
+import SignatureList from '../components/SignatureList';
 import axiosInstance from '../utils/axiosInstance';
 import { useNavigate } from 'react-router-dom';
 import { 

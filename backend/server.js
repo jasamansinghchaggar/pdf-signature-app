@@ -14,10 +14,7 @@ import auditRouter from './routes/audit.routes.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Connect to MongoDB
-connectDB();
+const PORT = process.env.PORT;
 
 // CORS configuration
 const allowedOrigins = process.env.CLIENT_URLS.split(',');
@@ -64,16 +61,23 @@ app.use((req, res) => {
 // Global error handler
 app.use((error, req, res, next) => {
     console.error('Error:', error);
-    
     res.status(error.status || 500).json({
         success: false,
-        message: error.message || 'Internal server error',
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+        message: error.message || 'Internal server error'
     });
 });
 
-// Start the server
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-    console.log(`Server is also accessible on http://192.168.1.7:${PORT}`);
-});
+// Start the server only after successful DB connection
+const startServer = async () => {
+    try {
+        await connectDB();
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log("Server running on http://localhost:3000");
+        });
+    } catch (error) {
+        console.error('Failed to connect to database. Server not started.');
+        process.exit(1);
+    }
+};
+
+startServer();
