@@ -28,4 +28,4 @@ This project is licensed under the [MIT License](LICENSE).
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
 
 ## Contact
-For any inquiries, please contact [your email/contact info].
+For any inquiries, please contact jsc.21905@gmail.com
